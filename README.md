@@ -1,4 +1,4 @@
-# Carebot Support Assignment
+# Support Assignment
 
 ## Overview
 
