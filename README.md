@@ -2,7 +2,7 @@
 
 ## Overview
 
-This repository contains my solution for the Carebot Support Engineer assignment.
+This repository contains my solution for the Support Engineer assignment.
 
 The solution consists of:
 
