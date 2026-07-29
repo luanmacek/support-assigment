@@ -1,0 +1,7 @@
+{
+    "Name": "Carebot Orthanc",
+    "RemoteAccessAllowed": true,
+    "AuthenticationEnabled": false,
+    "HttpPort": 8042,
+    "DicomPort": 4242
+}

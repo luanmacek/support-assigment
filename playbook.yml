@@ -1,0 +1,131 @@
+---
+- name: Install and configure Orthanc
+  hosts: localhost
+  connection: local
+  gather_facts: true
+
+  vars:
+    orthanc_image: orthancteam/orthanc
+    orthanc_container: orthanc
+
+    orthanc_config_dir: >-
+      {{
+        '/opt/orthanc'
+        if ansible_facts['os_family'] == 'Debian'
+        else ansible_env.HOME + '/orthanc'
+      }}
+
+    orthanc_config_file: "{{ orthanc_config_dir }}/orthanc.json"
+
+  tasks:
+
+    #####################################################################
+    # Ubuntu / Debian
+    #####################################################################
+
+    - name: Install Docker
+      ansible.builtin.apt:
+        name:
+          - docker.io
+          - python3-docker
+        state: present
+        update_cache: true
+      become: true
+      when: ansible_facts["os_family"] == "Debian"
+
+    - name: Start Docker
+      ansible.builtin.service:
+        name: docker
+        state: started
+        enabled: true
+      become: true
+      when: ansible_facts["os_family"] == "Debian"
+
+    #####################################################################
+    # macOS
+    #####################################################################
+
+    - name: Check Docker installation
+      ansible.builtin.command: docker --version
+      register: docker_check
+      failed_when: false
+      changed_when: false
+      when: ansible_facts["os_family"] == "Darwin"
+
+    - name: Fail if Docker Desktop is missing
+      ansible.builtin.fail:
+        msg: |
+          Docker Desktop is not installed.
+
+          Install it using:
+
+              brew install --cask docker
+
+          Then start Docker Desktop and rerun the playbook.
+      when:
+        - ansible_facts["os_family"] == "Darwin"
+        - docker_check.rc != 0
+
+    - name: Start Docker Desktop
+      ansible.builtin.command: open -a Docker
+      changed_when: false
+      when: ansible_facts["os_family"] == "Darwin"
+
+    - name: Wait for Docker
+      ansible.builtin.command: docker info
+      register: docker_info
+      retries: 30
+      delay: 2
+      until: docker_info.rc == 0
+      changed_when: false
+      when: ansible_facts["os_family"] == "Darwin"
+
+    #####################################################################
+    # Shared tasks
+    #####################################################################
+
+    - name: Create Orthanc configuration directory
+      ansible.builtin.file:
+        path: "{{ orthanc_config_dir }}"
+        state: directory
+        mode: "0755"
+      become: "{{ ansible_facts['os_family'] == 'Debian' }}"
+
+    - name: Copy Orthanc configuration
+      ansible.builtin.copy:
+        src: files/orthanc.json
+        dest: "{{ orthanc_config_file }}"
+        mode: "0644"
+      become: "{{ ansible_facts['os_family'] == 'Debian' }}"
+
+    - name: Pull Orthanc image
+      community.docker.docker_image:
+        name: "{{ orthanc_image }}"
+        source: pull
+
+    - name: Remove existing Orthanc container
+      community.docker.docker_container:
+        name: "{{ orthanc_container }}"
+        state: absent
+      ignore_errors: true
+
+    - name: Run Orthanc container
+      community.docker.docker_container:
+        name: "{{ orthanc_container }}"
+        image: "{{ orthanc_image }}"
+        state: started
+        restart_policy: always
+        published_ports:
+          - "8042:8042"
+          - "4242:4242"
+        volumes:
+          - "{{ orthanc_config_dir }}:/etc/orthanc:ro"
+
+    - name: Wait for Orthanc
+      ansible.builtin.uri:
+        url: http://localhost:8042/system
+        status_code: 200
+      register: orthanc
+      retries: 15
+      delay: 2
+      until: orthanc.status == 200
